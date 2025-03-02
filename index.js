@@ -1,57 +1,49 @@
-
-const { Telegraf } = require("telegraf");
+const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
+const { exec } = require("child_process");
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+// Environment Variables
+const BOT_TOKEN = process.env.BOT_TOKEN;
+const PORT = process.env.PORT || 10000;
+const BASE_URL = "https://YOUR-RENDER-APP.onrender.com";  // Replace this after deployment
+
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const app = express();
-const PORT = 3000;
 
-// Public folder for PHP files
-app.use(express.static("public"));
-
-// Telegram bot command to receive PHP code
-bot.start((ctx) => {
-  ctx.reply("Mujhe PHP code bhejo, main usko host karke ek live link doonga.");
-});
-
-bot.on("text", async (ctx) => {
-  const phpCode = ctx.message.text;
-  const fileName = `file_${Date.now()}.php`;
-  const filePath = path.join(__dirname, "public", fileName);
-
-  // Save PHP code to a file
-  fs.writeFileSync(filePath, phpCode);
-
-  // Generate the live link
-  const liveLink = `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co/${fileName}`;
-  ctx.reply(`Aapka PHP code live hai: ${liveLink}\nClick karne par execute hoga.`);
-});
-
-// Express route for serving PHP files
-app.get('/:fileName', (req, res) => {
-  const fileName = req.params.fileName;
-  if (fileName.endsWith('.php')) {
-    res.setHeader('Content-Type', 'text/html');
-    const filePath = path.join(__dirname, 'public', fileName);
+// Middleware to serve PHP files dynamically
+app.get("/:filename", (req, res) => {
+    const filePath = `./php_files/${req.params.filename}`;
     if (fs.existsSync(filePath)) {
-      res.send(fs.readFileSync(filePath, 'utf8'));
+        exec(`php ${filePath}`, (error, stdout, stderr) => {
+            if (error) {
+                res.send(`<pre>Error: ${stderr}</pre>`);
+            } else {
+                res.send(`<pre>${stdout}</pre>`);
+            }
+        });
     } else {
-      res.status(404).send('File not found');
+        res.status(404).send("File not found.");
     }
-  } else {
-    res.status(404).send('Not found');
-  }
 });
 
-bot.launch();
+// Start Express Server
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 
-// Start the Express server
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on port ${PORT}`);
+    bot.onText(/\/start/, (msg) => {
+        bot.sendMessage(msg.chat.id, "Send me a PHP code, and I'll execute it for you!");
+    });
+
+    bot.on("message", async (msg) => {
+        if (msg.text && msg.text.startsWith("<?php")) {
+            const filename = `code_${msg.chat.id}_${Date.now()}.php`;
+            const filePath = `./php_files/${filename}`;
+
+            fs.writeFileSync(filePath, msg.text);
+
+            const phpUrl = `${BASE_URL}/${filename}`;
+            bot.sendMessage(msg.chat.id, `Your PHP code is running at: ${phpUrl}`);
+        }
+    });
 });
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
