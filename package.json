@@ -1,5 +1,5 @@
 {
-  "name": "telegram-php-bot",
+  "name": "php",
   "version": "1.0.0",
   "description": "Telegram bot to run PHP code online",
   "main": "index.js",
