@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 
 // Environment variables
 const token = process.env.BOT_TOKEN;
@@ -23,6 +24,7 @@ const linkData = [
   }
 ];
 
+// Utility functions
 function encodeBase64(text) {
   return Buffer.from(text.toString()).toString('base64');
 }
@@ -30,8 +32,6 @@ function encodeBase64(text) {
 function generateMainMenu() {
   return linkData.map(item => ({ text: item.name, callback_data: `menu_${item.name}` }));
 }
-
-const fs = require('fs');
 
 function saveChatId(chatId) {
   try {
@@ -47,6 +47,7 @@ function saveChatId(chatId) {
   }
 }
 
+// Bot commands
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   saveChatId(chatId);
@@ -85,13 +86,9 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 });
 
-//To store broadcast states. Needs to be initialized before use.
+// Admin commands
 const broadcastStates = new Map();
 
-// Admin configuration
-const ADMIN_ID = process.env.ADMIN_ID;
-
-// Admin commands
 bot.onText(/\/admin/, async (msg) => {
   const chatId = msg.chat.id;
   if (chatId.toString() === ADMIN_ID) {
@@ -101,7 +98,7 @@ bot.onText(/\/admin/, async (msg) => {
         inline_keyboard: [
           [{ text: "📊 Total Users", callback_data: "admin_users" }],
           [{ text: "📢 Broadcast Message", callback_data: "admin_broadcast" }],
-          [{ text: "📥 Download Chat IDs", callback_data: "download_ids" }]
+          [{ text: "📥 Download Chat IDs", callback_data: "admin_download_chat_ids" }]
         ]
       }
     };
@@ -109,7 +106,6 @@ bot.onText(/\/admin/, async (msg) => {
   }
 });
 
-// Enhanced callback handling
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
@@ -117,33 +113,17 @@ bot.on('callback_query', async (callbackQuery) => {
   if (chatId.toString() === ADMIN_ID) {
     if (data === 'admin_users') {
       const users = fs.readFileSync('users.txt', 'utf8').split('\n').filter(id => id);
-      const formattedUsers = users.map(id => `\`${id}\``).join('\n');
-      await bot.sendMessage(chatId, `📊 Total Users: ${users.length}\n\nUser IDs:\n${formattedUsers}`, {
-        parse_mode: 'Markdown'
-      });
+      await bot.sendMessage(chatId, `📊 Total Users: ${users.length}\n\nUser IDs:\n${users.join('\n')}`);
     } else if (data === 'admin_broadcast') {
       broadcastStates.set(chatId, true);
       await bot.sendMessage(chatId, '📢 Send your broadcast message (text, image or video):');
-    } else if (data === 'download_ids') {
-      const users = fs.readFileSync('users.txt', 'utf8');
-      // Create a temporary file with all IDs
-      const tempFile = 'all_chat_ids.txt';
-      fs.writeFileSync(tempFile, users);
-      await bot.sendDocument(chatId, tempFile, {
-        caption: '📥 Here are all the chat IDs'
-      });
-      // Clean up temporary file
-      fs.unlinkSync(tempFile);
+    } else if (data === 'admin_download_chat_ids') {
+      const filePath = path.join(__dirname, 'users.txt');
+      await bot.sendDocument(chatId, filePath);
     }
-  }
-
-  // Existing callback handling
-  if (data.startsWith('menu_')) {
-    // ... existing code ...
   }
 });
 
-// Enhanced message handling
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
 
@@ -172,6 +152,7 @@ bot.on('message', async (msg) => {
     await bot.sendMessage(chatId, `📢 Broadcast completed!\nSuccess: ${successCount}\nFailed: ${failCount}`);
   }
 });
+
 // Express server
 app.get('/', (req, res) => {
   res.send('Bot is running!');
